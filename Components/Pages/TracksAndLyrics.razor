@@ -1,0 +1,180 @@
+﻿@page "/tracks-lyrics"
+@using System.Text.Json.Serialization
+@using MyHybridLyricsApp.Services
+@inject HttpClient Http
+@inject AppState AppState
+
+<h3>Tracks Data from FastAPI</h3>
+
+<div style="display: flex; gap: 20px;">
+    <div id="tracks" style="width: 400px; border:1px solid #ddd; padding:10px;">
+        <div id="saved">
+            <p>Saved Track List</p>
+            @if (SavedTracks != null && SavedTracks.Any())
+            {
+                <ul>
+                @foreach (var track in SavedTracks)
+                {
+                    <li><a href="#" @onclick:preventDefault @onclick="() => FetchSavedLyric(track.TrackName)">@track.TrackName - @track.ArtistName</a></li>
+                }
+                </ul>
+            }
+            else if (SavedTracks != null && !SavedTracks.Any())
+            {
+                <p>No saved tracks.</p>
+            }
+            else
+            {
+                <p>Loading saved tracks...</p>
+            }
+        </div>
+        
+        <div id="played" style="margin-top:20px;">
+            <p>Played Track List</p>
+            @if (PlayedTracks != null && PlayedTracks.Any())
+            {
+                <ul>
+                @foreach (var track in PlayedTracks)
+                {
+                    <li><a href="#" @onclick:preventDefault @onclick="() => FetchPlayedLyric(track.TrackName)">@track.TrackName - @track.ArtistName</a></li>
+                }
+                </ul>
+            }
+            else if (PlayedTracks != null && !PlayedTracks.Any())
+            {
+                <p>No played tracks.</p>
+            }
+            else
+            {
+                <p>Loading played tracks...</p>
+            }
+        </div>
+    </div>
+
+    <div id="lyrics" style="flex:1; border:1px solid #ddd; padding:10px;">
+        <div id="lyric">
+            @if (!string.IsNullOrEmpty(LyricText))
+            {
+                <p>@((MarkupString)LyricText)</p>
+            }
+            else if (IsFetchingLyrics)
+            {
+                <p>Message: Fetching the lyric...</p>
+            }
+            else
+            {
+                <p>Select a track to see lyrics</p>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<TrackItem>? SavedTracks { get; set; }
+    private List<TrackItem>? PlayedTracks { get; set; }
+
+    private string LyricText { get; set; } = string.Empty;
+    private bool IsFetchingLyrics { get; set; } = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await FetchSavedTracks();
+        await FetchPlayedTracks();
+    }
+
+    private async Task FetchSavedTracks()
+    {
+        if (!AppState.isEnvVarsConfigured)
+        {
+            SavedTracks = new List<TrackItem>();
+        }
+        else
+        {
+            var response = await Http.GetAsync("http://192.168.1.103:8251/saved");
+            if (response.IsSuccessStatusCode)
+            {
+                SavedTracks = await response.Content.ReadFromJsonAsync<List<TrackItem>>();
+            }
+            else
+            {
+                SavedTracks = new List<TrackItem>(); // or handle error
+            }
+        }
+    }
+
+    private async Task FetchPlayedTracks()
+    {
+        if (!AppState.isEnvVarsConfigured)
+        {
+            PlayedTracks = new List<TrackItem>();
+        }
+        else
+        {
+            var response = await Http.GetAsync("http://192.168.1.103:8251/played");
+            if (response.IsSuccessStatusCode)
+            {
+                PlayedTracks = await response.Content.ReadFromJsonAsync<List<TrackItem>>();
+            }
+            else
+            {
+                PlayedTracks = new List<TrackItem>(); // or handle error
+            }
+        }
+    }
+
+    private async Task FetchSavedLyric(string trackName)
+    {
+        IsFetchingLyrics = true;
+        LyricText = string.Empty;
+        var encodedTrackName = Uri.EscapeDataString(trackName);
+        var response = await Http.GetAsync($"http://192.168.1.103:8251/lyrics/saved/{encodedTrackName}");
+        IsFetchingLyrics = false;
+        if (response.IsSuccessStatusCode)
+        {
+            var json = await response.Content.ReadAsStringAsync();
+            var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("lyrics", out var lyricsProp))
+            {
+                LyricText = lyricsProp.GetString();
+            }
+        }
+        else
+        {
+            LyricText = $"Error: {response.ReasonPhrase}";
+        }
+    }
+
+    private async Task FetchPlayedLyric(string trackName)
+    {
+        IsFetchingLyrics = true;
+        LyricText = string.Empty;
+        var encodedTrackName = Uri.EscapeDataString(trackName);
+        var response = await Http.GetAsync($"http://192.168.1.103:8251/lyrics/played/{encodedTrackName}");
+        IsFetchingLyrics = false;
+        if (response.IsSuccessStatusCode)
+        {
+            var json = await response.Content.ReadAsStringAsync();
+            var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("lyrics", out var lyricsProp))
+            {
+                LyricText = lyricsProp.GetString();
+            }
+        }
+        else
+        {
+            LyricText = $"Error: {response.ReasonPhrase}";
+        }
+    }
+
+    public class TrackItem
+    {
+        [JsonPropertyName("track_name")]
+        public string TrackName { get; set; }
+        
+        [JsonPropertyName("artist_name")]
+        public string ArtistName { get; set; }
+        
+        [JsonPropertyName("album_name")]
+        public string AlbumName { get; set; }
+    }
+}

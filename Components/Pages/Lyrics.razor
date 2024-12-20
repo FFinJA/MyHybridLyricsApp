@@ -1,0 +1,56 @@
+﻿@page "/lyrics"
+@inject HttpClient Http
+
+<h3>Show Lyrics</h3>
+
+
+<div>
+    <label>Enter Track Name:</label>
+    <input class="form-control mb-3" @bind="TrackName" />
+</div>
+<div>
+    <label>Enter Artist Name:</label>
+    <input class="form-control mb-3" @bind="ArtistName" />
+</div>
+<button class="btn btn-primary" @onclick="FetchLyrics">Fetch Lyrics</button>
+
+@if (!string.IsNullOrEmpty(LyricText))
+{
+    <p>@((MarkupString)LyricText)</p>
+}
+
+@code {
+    private string TrackName { get; set; } = string.Empty;
+    private string ArtistName { get; set; } = string.Empty;
+    private string LyricText { get; set; } = string.Empty;
+
+    private async Task FetchLyrics()
+    {
+        // 对 TrackName 做 URL 编码
+        var encodedTrackName = Uri.EscapeDataString(TrackName);
+        var encodedArtistName = Uri.EscapeDataString(ArtistName);
+
+        // 调用后端API，例如 "http://localhost:8251" 可以在 Program.cs 中配置 HttpClient.BaseAddress
+        var response = await Http.GetAsync($"http://192.168.1.103:8251/lyrics/search/{encodedTrackName}/{encodedArtistName}");
+
+        if (response.IsSuccessStatusCode)
+        {
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("lyrics", out var lyricsElement) && lyricsElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                LyricText = lyricsElement[0].GetString();
+            }
+            else
+            {
+                LyricText = "No lyrics found in the response.";
+            }
+        }
+        else
+        {
+            LyricText = $"Error fetching lyrics: {response.ReasonPhrase}";
+        }
+    }
+}

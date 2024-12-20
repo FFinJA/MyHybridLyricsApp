@@ -1,0 +1,87 @@
+﻿@page "/set-env"
+@using System.Text.Json.Serialization
+@using Blazored.LocalStorage
+@using MyHybridLyricsApp.Services
+@inject HttpClient Http
+@inject AppState AppState
+@inject ILocalStorageService LocalStorage
+
+<h3>Set Environment Variables</h3>
+
+<div>
+    <label>Client ID:</label>
+    <input class="blockquote form-control mb-3" @bind="ClientId"  />
+</div>
+<div>
+    <label>Client Secret:</label>
+    <input class="form-control mb-3" @bind="ClientSecret" type="password"/>
+</div>
+<div>
+    <label>Redirect URI:</label>
+    <input class="form-control mb-3" @bind="RedirectUri"/>
+</div>
+<button class="btn btn-primary" @onclick="SaveEnvVars">Save</button>
+<div>
+    <p>@_saveResult</p>
+</div>
+
+@code {
+    private string ClientId { get; set; } = string.Empty;
+    private string ClientSecret { get; set; } = string.Empty;
+    private string RedirectUri { get; set; } = string.Empty;
+    private string _saveResult = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (await LocalStorage.GetItemAsync<bool>("isEnvVarsConfigured"))
+        {
+            ClientId = await LocalStorage.GetItemAsync<string>("ClientId");
+            ClientSecret = await LocalStorage.GetItemAsync<string>("ClientSecret");
+            RedirectUri = await LocalStorage.GetItemAsync<string>("RedirectUri");
+        }
+    }
+
+    private async Task SaveEnvVars()
+    {
+        try
+        {
+            var payload = new
+            {
+                client_id = ClientId,
+                client_secret = ClientSecret,
+                redirect_uri = RedirectUri
+            };
+
+            var response = await Http.PostAsJsonAsync("http://192.168.1.103:8251/config/save", payload);
+
+            var result = await response.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+            if (result != null && result.ContainsKey("message"))
+            {
+                if(response.IsSuccessStatusCode)
+                {
+                    _saveResult = $"Success: {result["message"]}";
+                    AppState.setEnvVarsConfigured(true);
+
+                    await LocalStorage.SetItemAsync("isEnvVarsConfigured", true);
+                    await LocalStorage.SetItemAsync("ClientId", ClientId);
+                    await LocalStorage.SetItemAsync("ClientSecret", ClientSecret);
+                    await LocalStorage.SetItemAsync("RedirectUri", RedirectUri);
+                }
+                else
+                {
+                    _saveResult = $"Failed: {result["message"]}";
+                }
+            }
+            else
+            {
+                _saveResult = response.IsSuccessStatusCode ? "Env vars saved successfully, but no message was returned." : "Failed to save env vars, and no error message was return";
+            }
+            Console.WriteLine(_saveResult);
+        }
+        catch (Exception ex)
+        {
+            _saveResult = $"An error occurred: {ex.Message}";
+            Console.WriteLine(_saveResult);
+        }
+    }
+}
